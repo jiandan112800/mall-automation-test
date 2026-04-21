@@ -1,0 +1,57 @@
+﻿# API 基础地址（与后端服务端口一致；抓包 login 为 http://localhost:8080/login 时应填 8080）
+base_url: "http://localhost:8080"
+
+# 前端页面地址（可与 API 不同，例如 Vite 在 3000、后端在 8080）
+ui_base_url: "http://localhost:3000"
+
+# 管理后台地址（可选；按实际部署修改端口与路径）
+admin_ui_base_url: "http://localhost:8080/manage/home"
+
+# 请求超时（秒）
+timeout: 15
+
+# 是否验证 SSL（本地开发不用）
+verify_ssl: false
+
+# 用户登录信息
+username: "user1"        # 示例用户
+password: "123456"
+# 与浏览器一致：前端对密码做 MD5 再提交时填 md5；后端要明文则填 plain
+login_password_encoding: md5
+
+# 接口路径（与抓包一致时可固定填写，避免“自动探测”不易理解）
+login_path: "/login"
+userid_path: "/userid"
+
+# 管理员登录信息
+admin_username: "admin"
+admin_password: "123456"
+
+# UI 登录：true 时走接口登录并把 token 写入 localStorage（需 base_url 接口可用，与 ui_base_url 可并存）
+ui_use_api_token: false
+# 与前端存 token 的 key 一致（常见为 token）
+ui_token_storage_key: "token"
+
+# Selenium 配置
+headless: true
+# 页面与脚本超时（秒），避免无服务或卡死时长时间挂起
+ui_page_load_timeout: 45
+ui_script_timeout: 45
+ui_implicit_wait: 5
+chrome_driver_path: "D:/Python/Lib/site-packages/chromedriver_binary/chromedriver.exe"
+# 前端为 Vue SPA（index 仅 #app + chunk-elementUI），业务 DOM 由 JS 注入；脚本会先等 #app 出现可交互内容
+# 登录页与首页同一壳；LoginPage 依次尝试 /login 与 /#/login（history / hash 路由）
+ui_home_path: "/topview"
+ui_cart_path: "/cart"
+
+# 测试占位符
+orderNoPaid: ""  # 用于测试订单相关
+
+# 数据库配置（可选；配置后可启用 SQL 断言）
+db:
+  host: ""
+  port: 3306
+  user: ""
+  password: ""
+  database: ""
+  charset: "utf8mb4"

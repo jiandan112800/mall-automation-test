@@ -1,0 +1,8 @@
+pytest
+requests
+PyYAML
+allure-pytest
+selenium
+webdriver-manager
+openpyxl
+pymysql
