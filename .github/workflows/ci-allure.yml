@@ -66,11 +66,11 @@ jobs:
 
       - name: Clone backend repository
         run: |
-          git clone --depth=1 https://github.com/jiandan112800/OnlineMall-backend.git ../OnlineMall-backend
+          git clone --depth=1 https://github.com/jiandan112800/OnlineMall-backend.git OnlineMall-backend
 
       - name: Init backend database
         run: |
-          SQL_FILE="../OnlineMall-backend/database/electronic_mall.sql"
+          SQL_FILE="OnlineMall-backend/database/electronic_mall.sql"
           if [ -f "$SQL_FILE" ]; then
             mysql -h127.0.0.1 -uroot -p123456 db_electronic_mall < "$SQL_FILE"
           else
@@ -80,10 +80,10 @@ jobs:
 
       - name: Start backend service
         run: |
-          cd ../OnlineMall-backend
+          cd OnlineMall-backend
           mkdir -p avatar file
-          mvn -B -q -DskipTests spring-boot:run > ../backend.log 2>&1 &
-          echo $! > ../backend.pid
+          mvn -B -q -DskipTests spring-boot:run > "$GITHUB_WORKSPACE/backend.log" 2>&1 &
+          echo $! > "$GITHUB_WORKSPACE/backend.pid"
 
       - name: Wait for backend ready
         run: |
@@ -96,7 +96,7 @@ jobs:
           done
           echo "Backend did not become ready in time."
           echo "===== backend.log (tail) ====="
-          tail -n 200 ../backend.log || true
+          tail -n 200 backend.log || true
           exit 1
 
       - name: Run pytest and collect allure results
@@ -146,14 +146,14 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: backend-log
-          path: ../backend.log
+          path: backend.log
           if-no-files-found: warn
 
       - name: Stop backend service
         if: always()
         run: |
-          if [ -f ../backend.pid ]; then
-            kill "$(cat ../backend.pid)" || true
+          if [ -f backend.pid ]; then
+            kill "$(cat backend.pid)" || true
           fi
 
       - name: Fail job when tests failed
