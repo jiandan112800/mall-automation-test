@@ -15,6 +15,28 @@ jobs:
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: 123456
+          MYSQL_DATABASE: db_electronic_mall
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -p123456"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
 
     steps:
       - name: Checkout
@@ -26,10 +48,56 @@ jobs:
           python-version: "3.11"
           cache: "pip"
 
+      - name: Setup Java for backend
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "8"
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+
+      - name: Install mysql client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mysql-client
+
+      - name: Clone backend repository
+        run: |
+          git clone --depth=1 https://github.com/jiandan112800/OnlineMall-backend.git ../OnlineMall-backend
+
+      - name: Init backend database
+        run: |
+          SQL_FILE="../OnlineMall-backend/database/electronic_mall.sql"
+          if [ -f "$SQL_FILE" ]; then
+            mysql -h127.0.0.1 -uroot -p123456 db_electronic_mall < "$SQL_FILE"
+          else
+            echo "SQL init file not found: $SQL_FILE"
+            echo "Proceeding without import (backend may fail if schema is required)."
+          fi
+
+      - name: Start backend service
+        run: |
+          cd ../OnlineMall-backend
+          mkdir -p avatar file
+          mvn -B -q -DskipTests spring-boot:run > ../backend.log 2>&1 &
+          echo $! > ../backend.pid
+
+      - name: Wait for backend ready
+        run: |
+          for i in {1..90}; do
+            if curl -fsS http://localhost:8080/api/good >/dev/null; then
+              echo "Backend is ready."
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Backend did not become ready in time."
+          echo "===== backend.log (tail) ====="
+          tail -n 200 ../backend.log || true
+          exit 1
 
       - name: Run pytest and collect allure results
         env:
@@ -72,6 +140,21 @@ jobs:
           name: allure-report
           path: allure-report
           if-no-files-found: warn
+
+      - name: Upload backend log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-log
+          path: ../backend.log
+          if-no-files-found: warn
+
+      - name: Stop backend service
+        if: always()
+        run: |
+          if [ -f ../backend.pid ]; then
+            kill "$(cat ../backend.pid)" || true
+          fi
 
       - name: Fail job when tests failed
         run: |
