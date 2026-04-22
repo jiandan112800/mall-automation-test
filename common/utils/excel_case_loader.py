@@ -81,21 +81,39 @@ def _case_map() -> dict[str, dict]:
     if not files:
         raise FileNotFoundError("No xlsx case file found in project root")
 
-    wb = load_workbook(files[0], data_only=True)
-    ws = wb[wb.sheetnames[0]]
-    headers = [c.value for c in ws[2]]
-    rows: dict[str, dict] = {}
-    for row in ws.iter_rows(min_row=3, max_row=ws.max_row, values_only=True):
-        if not row or not row[0]:
+    required_headers = {"id", "path"}
+    optional_headers = {"method", "check", "expected"}
+
+    for file in files:
+        wb = load_workbook(file, data_only=True)
+        ws = wb[wb.sheetnames[0]]
+        headers = [str(c.value).strip() if c.value is not None else "" for c in ws[2]]
+        header_set = {h for h in headers if h}
+        if not required_headers.issubset(header_set):
             continue
-        item = {headers[i]: row[i] for i in range(len(headers))}
-        case_id = str(item["id"]).strip()
-        item["params_obj"] = _parse_json_obj(item.get("params"))
-        item["data_obj"] = _parse_json_obj(item.get("data"))
-        item["json_obj"] = _parse_json_obj(item.get("json"))
-        item["json_ex_map"] = _parse_json_ex_data(item.get("jsonExData"))
-        rows[case_id] = item
-    return rows
+        if not (header_set & optional_headers):
+            continue
+
+        rows: dict[str, dict] = {}
+        for row in ws.iter_rows(min_row=3, max_row=ws.max_row, values_only=True):
+            if not row or not row[0]:
+                continue
+            item = {headers[i]: row[i] for i in range(len(headers))}
+            case_id = str(item.get("id", "")).strip()
+            if not case_id:
+                continue
+            item["params_obj"] = _parse_json_obj(item.get("params"))
+            item["data_obj"] = _parse_json_obj(item.get("data"))
+            item["json_obj"] = _parse_json_obj(item.get("json"))
+            item["json_ex_map"] = _parse_json_ex_data(item.get("jsonExData"))
+            rows[case_id] = item
+        if rows:
+            return rows
+
+    raise KeyError(
+        "No valid API case sheet found. "
+        "Expected row-2 headers to include id/path and at least one of method/check/expected."
+    )
 
 
 def get_case(case_id: str) -> dict:

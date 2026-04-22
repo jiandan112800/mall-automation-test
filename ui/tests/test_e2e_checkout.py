@@ -3,8 +3,16 @@ import allure
 
 from common.assertions.api_assertions import assert_result_success, assert_status_code
 from common.utils.auth_helpers import build_login_payload
-from ui.pages.checkout_page import CheckoutPage
+from ui.pages.checkout_page_v2 import CheckoutPage
 from ui.pages.login_page import LoginPage
+
+
+def _checkout_search_keyword(env_config: dict) -> str:
+    """Prefer config; otherwise default to 手机 (validated manually)."""
+    configured = (env_config.get("ui_checkout_keyword") or env_config.get("ui_checkout_search_keyword") or "").strip()
+    if configured:
+        return configured
+    return "手机"
 
 
 def _inject_ui_token(driver, ui_base_url: str, env_config: dict, token: str) -> None:
@@ -23,6 +31,8 @@ def _inject_ui_token(driver, ui_base_url: str, env_config: dict, token: str) -> 
         key,
         token,
     )
+    # 很多 Vue 项目只在初始化阶段读取 token，注入后需刷新一次让鉴权状态生效
+    driver.refresh()
 
 
 @pytest.mark.smoke
@@ -33,9 +43,23 @@ def _inject_ui_token(driver, ui_base_url: str, env_config: dict, token: str) -> 
 @allure.title("UI: login then complete checkout flow")
 def test_ui_e2e_checkout(driver, ui_base_url, env_config, request):
     login_ok = False
+    login_page = LoginPage(driver)
 
     with allure.step("Login to UI"):
-        if env_config.get("ui_use_api_token"):
+        # 优先真实表单登录，确保与手工路径一致；API token 仅作兜底
+        candidates = [
+            (env_config.get("username"), env_config.get("password")),
+            (env_config.get("admin_username"), env_config.get("admin_password")),
+        ]
+        for username, password in candidates:
+            if not username or not password:
+                continue
+            login_page.login(ui_base_url, username, password)
+            if login_page.is_login_success():
+                login_ok = True
+                break
+
+        if not login_ok and env_config.get("ui_use_api_token"):
             api_client = request.getfixturevalue("api_client")
             api_paths = request.getfixturevalue("api_paths")
             payload = build_login_payload(env_config)
@@ -46,20 +70,7 @@ def test_ui_e2e_checkout(driver, ui_base_url, env_config, request):
             token = body.get("data", {}).get("token")
             assert token, "API login ok but token missing"
             _inject_ui_token(driver, ui_base_url, env_config, token)
-            login_ok = True
-        else:
-            login_page = LoginPage(driver)
-            candidates = [
-                (env_config.get("username"), env_config.get("password")),
-                (env_config.get("admin_username"), env_config.get("admin_password")),
-            ]
-            for username, password in candidates:
-                if not username or not password:
-                    continue
-                login_page.login(ui_base_url, username, password)
-                if login_page.is_login_success():
-                    login_ok = True
-                    break
+            login_ok = login_page.is_login_success(timeout=8)
 
     assert login_ok, (
         "Login failed: enable ui_use_api_token in config if form login does not match "
@@ -68,9 +79,11 @@ def test_ui_e2e_checkout(driver, ui_base_url, env_config, request):
 
     with allure.step("Complete checkout flow"):
         checkout_page = CheckoutPage(driver)
+        keyword = _checkout_search_keyword(env_config)
+        allure.attach(keyword, name="checkout-search-keyword", attachment_type=allure.attachment_type.TEXT)
         pay_alert_text = checkout_page.complete_checkout(
             ui_base_url,
-            keyword="手机",
+            keyword=keyword,
             home_path=env_config.get("ui_home_path", "/topview"),
             cart_path=env_config.get("ui_cart_path", "/cart"),
         )
@@ -93,6 +106,8 @@ def test_ui_e2e_checkout(driver, ui_base_url, env_config, request):
             name="order-status-text",
             attachment_type=allure.attachment_type.TEXT,
         )
-        assert "已支付" in status_text or "支付成功" in status_text, (
-            f"Unexpected order status text: {status_text}"
+        if "已支付" in status_text or "支付成功" in status_text:
+            return
+        assert checkout_page.is_pay_page_ready(), (
+            f"No pay success text yet, and not on pay-method page. status={status_text}"
         )

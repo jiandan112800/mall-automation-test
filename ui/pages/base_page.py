@@ -12,7 +12,14 @@ class BasePage:
         self.timeout = timeout
 
     def open(self, url: str) -> None:
-        self.driver.get(url)
+        try:
+            self.driver.get(url)
+        except TimeoutException:
+            # 部分页面会因长连接/资源阻塞导致 get 超时，停止加载后继续执行 DOM 级等待
+            try:
+                self.driver.execute_script("window.stop();")
+            except Exception:
+                pass
 
     def wait_for_vue_app_mounted(self, timeout: int | None = None) -> None:
         """

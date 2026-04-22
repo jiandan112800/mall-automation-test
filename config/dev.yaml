@@ -28,12 +28,12 @@ admin_username: "admin"
 admin_password: "123456"
 
 # UI 登录：true 时走接口登录并把 token 写入 localStorage（需 base_url 接口可用，与 ui_base_url 可并存）
-ui_use_api_token: false
+ui_use_api_token: true
 # 与前端存 token 的 key 一致（常见为 token）
 ui_token_storage_key: "token"
 
 # Selenium 配置
-headless: true
+headless: false
 # 页面与脚本超时（秒），避免无服务或卡死时长时间挂起
 ui_page_load_timeout: 45
 ui_script_timeout: 45

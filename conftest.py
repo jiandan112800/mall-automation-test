@@ -1,5 +1,6 @@
 import pytest
 import allure
+import requests
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
@@ -27,6 +28,103 @@ def _is_prod_like_host(host: str) -> bool:
     h = (host or "").lower()
     keywords = ("prod", "production", "online")
     return any(k in h for k in keywords)
+
+
+def _resolve_ui_base_url(env_config: dict) -> str:
+    """
+    Vite (3000) often does not expose /api/* — UI XHR then 404 and search stays 共0条.
+    If configured ui_base_url cannot serve /api/good, fall back to base_url (backend host).
+    """
+    explicit = str(env_config.get("ui_effective_base_url") or env_config.get("ui_spa_base_url") or "").strip()
+    if explicit:
+        return explicit.rstrip("/")
+
+    configured = str(env_config.get("ui_base_url", "http://localhost:3000")).rstrip("/")
+    api_base = str(env_config.get("base_url", "")).rstrip("/")
+    timeout = int(env_config.get("timeout", 15))
+    verify = bool(env_config.get("verify_ssl", True))
+    home_path = str(env_config.get("ui_home_path", "/topview")).strip()
+    if not home_path.startswith("/"):
+        home_path = f"/{home_path}"
+
+    def _looks_like_spa_shell(html: str) -> bool:
+        h = (html or "").lower()
+        return "id=\"app\"" in h or "id='app'" in h
+
+    try:
+        r = requests.get(f"{configured}/api/good", timeout=timeout, verify=verify)
+        if r.status_code == 404 and api_base:
+            r2 = requests.get(f"{api_base}/api/good", timeout=timeout, verify=verify)
+            if r2.status_code == 200:
+                # 仅当后端根路径也托管同一套前端壳时，才回退到 base_url（避免 API 在 8080、SPA 只在 3000 时误用 8080 打开 /login）
+                try:
+                    spa = requests.get(f"{api_base}{home_path}", timeout=timeout, verify=verify)
+                    if spa.status_code == 200 and _looks_like_spa_shell(spa.text):
+                        return api_base
+                except Exception:
+                    return configured
+    except Exception:
+        pass
+
+    return configured
+
+
+def _maybe_rewrite_shop_api_origin(driver, env_config: dict) -> None:
+    """
+    当 Vite 开发服 (ui_base_url) 未代理 /api/*，但后端 (base_url) 提供 /api/good 时，
+    在浏览器里把以 /api 开头的 XHR/fetch 重写到后端 origin，避免搜索永远 共0条。
+    """
+    configured_ui = str(env_config.get("ui_base_url", "http://localhost:3000")).rstrip("/")
+    api_base = str(env_config.get("base_url", "")).rstrip("/")
+    if not api_base or configured_ui == api_base:
+        return
+    timeout = int(env_config.get("timeout", 15))
+    verify = bool(env_config.get("verify_ssl", True))
+    try:
+        r_ui = requests.get(f"{configured_ui}/api/good", timeout=timeout, verify=verify)
+        r_api = requests.get(f"{api_base}/api/good", timeout=timeout, verify=verify)
+    except Exception:
+        return
+    if r_ui.status_code != 404 or r_api.status_code != 200:
+        return
+
+    api_origin = api_base
+
+    # Chrome only (当前 UI 套件使用 Chrome)
+    try:
+        driver.execute_cdp_cmd(
+            "Page.addScriptToEvaluateOnNewDocument",
+            {
+                "source": f"""
+(() => {{
+  const API_ORIGIN = {api_origin!r};
+
+  const toBackend = (url) => {{
+    if (typeof url !== 'string') return url;
+    if (url.startsWith('/api')) return API_ORIGIN + url;
+    return url;
+  }};
+
+  const origOpen = XMLHttpRequest.prototype.open;
+  XMLHttpRequest.prototype.open = function(method, url, async, user, password) {{
+    return origOpen.call(this, method, toBackend(url), async, user, password);
+  }};
+
+  const origFetch = window.fetch;
+  window.fetch = function(input, init) {{
+    if (typeof input === 'string') return origFetch.call(this, toBackend(input), init);
+    if (input && typeof Request !== 'undefined' && input instanceof Request) {{
+      const u = toBackend(input.url);
+      if (u !== input.url) return origFetch.call(this, new Request(u, input), init);
+    }}
+    return origFetch.call(this, input, init);
+  }};
+}})();
+"""
+            },
+        )
+    except Exception:
+        return
 
 
 @pytest.fixture(scope="session")
@@ -82,7 +180,7 @@ def api_client(env_config: dict) -> HttpClient:
 
 @pytest.fixture(scope="session")
 def ui_base_url(env_config: dict) -> str:
-    return str(env_config.get("ui_base_url", "http://localhost:3000")).rstrip("/")
+    return _resolve_ui_base_url(env_config)
 
 
 def _apply_ui_driver_timeouts(driver, env_config: dict) -> None:
