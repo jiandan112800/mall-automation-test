@@ -73,18 +73,48 @@ jobs:
 
       - name: Init backend database
         run: |
-          SQL_FILE="OnlineMall-backend/database/electronic_mall.sql"
-          if [ -f "$SQL_FILE" ]; then
-            mysql -h127.0.0.1 -uroot -p123456 db_electronic_mall < "$SQL_FILE"
-          else
-            echo "SQL init file not found: $SQL_FILE"
-            echo "Proceeding without import (backend may fail if schema is required)."
+          for i in $(seq 1 30); do
+            if mysql -h127.0.0.1 -uroot -p123456 -e "SELECT 1" >/dev/null 2>&1; then
+              echo "MySQL is ready."
+              break
+            fi
+            sleep 2
+          done
+
+          SQL_FILE=""
+          for f in \
+            "OnlineMall-backend/database/electronic_mall.sql" \
+            "OnlineMall-backend/sql/electronic_mall.sql" \
+            "OnlineMall-backend/electronic_mall.sql" \
+            "OnlineMall-backend/src/main/resources/electronic_mall.sql"
+          do
+            if [ -f "$f" ]; then
+              SQL_FILE="$f"
+              break
+            fi
+          done
+
+          if [ -z "$SQL_FILE" ]; then
+            echo "SQL init file not found in known paths."
+            ls -la OnlineMall-backend || true
+            ls -la OnlineMall-backend/database || true
+            ls -la OnlineMall-backend/sql || true
+            exit 1
           fi
+
+          echo "Using SQL file: $SQL_FILE"
+          mysql -h127.0.0.1 -uroot -p123456 db_electronic_mall < "$SQL_FILE"
 
       - name: Start backend service
         run: |
           cd OnlineMall-backend
           mkdir -p avatar file
+          export SPRING_PROFILES_ACTIVE=dev
+          export SPRING_DATASOURCE_URL="jdbc:mysql://127.0.0.1:3306/db_electronic_mall?useUnicode=true&characterEncoding=utf8&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai"
+          export SPRING_DATASOURCE_USERNAME="root"
+          export SPRING_DATASOURCE_PASSWORD="123456"
+          export SPRING_REDIS_HOST="127.0.0.1"
+          export SPRING_REDIS_PORT="6379"
           nohup mvn -B -DskipTests spring-boot:run > "$GITHUB_WORKSPACE/backend.log" 2>&1 &
           echo $! > "$GITHUB_WORKSPACE/backend.pid"
           sleep 12
