@@ -81,29 +81,31 @@ jobs:
             sleep 2
           done
 
-          SQL_FILE=""
+          SQL_FILES=()
           for f in \
             "OnlineMall-backend/database/electronic_mall.sql" \
             "OnlineMall-backend/sql/electronic_mall.sql" \
             "OnlineMall-backend/electronic_mall.sql" \
-            "OnlineMall-backend/src/main/resources/electronic_mall.sql"
+            "OnlineMall-backend/src/main/resources/electronic_mall.sql" \
+            "OnlineMall-backend/src/main/resources/schema.sql" \
+            "OnlineMall-backend/src/main/resources/data.sql"
           do
             if [ -f "$f" ]; then
-              SQL_FILE="$f"
-              break
+              SQL_FILES+=("$f")
             fi
           done
 
-          if [ -z "$SQL_FILE" ]; then
-            echo "SQL init file not found in known paths."
+          if [ "${#SQL_FILES[@]}" -eq 0 ]; then
+            echo "No SQL bootstrap file found; continue and rely on backend auto-init."
             ls -la OnlineMall-backend || true
-            ls -la OnlineMall-backend/database || true
-            ls -la OnlineMall-backend/sql || true
-            exit 1
+            ls -la OnlineMall-backend/src/main/resources || true
+          else
+            echo "Importing SQL files:"
+            printf ' - %s\n' "${SQL_FILES[@]}"
+            for sql in "${SQL_FILES[@]}"; do
+              mysql -h127.0.0.1 -uroot -p123456 db_electronic_mall < "$sql"
+            done
           fi
-
-          echo "Using SQL file: $SQL_FILE"
-          mysql -h127.0.0.1 -uroot -p123456 db_electronic_mall < "$SQL_FILE"
 
       - name: Start backend service
         run: |

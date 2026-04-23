@@ -1,6 +1,7 @@
 import pytest
 import allure
 import requests
+import logging
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
@@ -9,6 +10,8 @@ from common.db.mysql_client import DBClient
 from common.utils.config_loader import load_env_config
 from common.assertions.api_assertions import assert_status_code, assert_result_success
 from common.utils.auth_helpers import build_login_payload
+
+logger = logging.getLogger(__name__)
 
 @pytest.fixture(scope="session")
 def env_config() -> dict:
@@ -318,7 +321,18 @@ def api_paths(api_client: HttpClient, env_config: dict) -> dict:
 @pytest.fixture(scope="session")
 def auth_token(api_client: HttpClient, env_config: dict, api_paths: dict) -> str:
     payload = build_login_payload(env_config)
+    logger.info(
+        "auth_token login start: path=%s user=%s encoding=%s",
+        api_paths["login_path"],
+        env_config.get("username", ""),
+        env_config.get("login_password_encoding", "plain"),
+    )
     resp = api_client.post(api_paths["login_path"], json=payload)
+    logger.info(
+        "auth_token login response: status=%s body_preview=%s",
+        resp.status_code,
+        (resp.text or "")[:400],
+    )
     assert_status_code(resp, 200)
     body = resp.json()
     assert_result_success(body)

@@ -1,3 +1,5 @@
+import logging
+
 import pytest
  
 from common.assertions.api_assertions import (
@@ -12,6 +14,8 @@ from common.utils.excel_case_loader import (
     run_sql_check,
 )
 
+logger = logging.getLogger(__name__)
+
 
 @pytest.mark.labels("smoke", "auth")
 def test_login_success(api_client, env_config, api_paths, case_context, db_client, db_tx):
@@ -21,14 +25,26 @@ def test_login_success(api_client, env_config, api_paths, case_context, db_clien
         str(env_config.get("password", "")),
         str(env_config.get("login_password_encoding", "plain")),
     )
+    logger.info(
+        "login request prepared: path=%s, user=%s, encoding=%s",
+        api_paths["login_path"],
+        env_config.get("username", ""),
+        env_config.get("login_password_encoding", "plain"),
+    )
     _, params, data, json_body = build_request(case, context)
     resp = api_client.post(api_paths["login_path"], params=params, data=data, json=json_body)
+    body_preview = (resp.text or "")[:400]
+    logger.info(
+        "login response: status=%s body_preview=%s",
+        resp.status_code,
+        body_preview,
+    )
     assert_by_case_rule(resp, case)
     body = resp.json()
     case_context.update(extract_vars_from_response(case, body))
     run_sql_check(case, context, db_client=db_client, db_tx=db_tx)
     assert "token" in body.get("data", {}), f"Missing token in response: {body}"
-
+    
 
 @pytest.mark.labels("security")
 def test_token_expired_access_profile(api_client, api_paths):
