@@ -142,7 +142,7 @@ jobs:
               sed -n '1,400p' "$GITHUB_WORKSPACE/backend.log" || true
               exit 1
             fi
-            if ss -lnt | rg -q ":${PORT} "; then
+            if ss -lnt | grep -E ":${PORT}\\b" >/dev/null 2>&1; then
               root_code=$(curl --noproxy '*' -sS --connect-timeout 2 --max-time 5 -o /dev/null -w "%{http_code}" "http://127.0.0.1:${PORT}/" 2>/dev/null || echo 000)
               code=$(curl --noproxy '*' -sS --connect-timeout 2 --max-time 5 -o /dev/null -w "%{http_code}" "http://127.0.0.1:${PORT}/api/good" 2>/dev/null || echo 000)
               if [ "$root_code" != "000" ] || [ "$code" != "000" ]; then
@@ -152,7 +152,7 @@ jobs:
             fi
             if [ $((i % 15)) -eq 0 ]; then
               echo "still waiting... attempt=$i"
-              ss -lnt | rg ":${PORT} " || true
+              ss -lnt | grep -E ":${PORT}\\b" || true
               tail -n 30 "$GITHUB_WORKSPACE/backend.log" || true
             fi
             sleep 2
@@ -166,7 +166,7 @@ jobs:
         env:
           RUN_UI: ${{ github.event.inputs.run_ui || 'false' }}
         run: |
-          if ! ss -lnt | rg -q ":8080 "; then
+          if ! ss -lnt | grep -E ":8080\\b" >/dev/null 2>&1; then
             echo "Backend port 8080 is not listening before pytest."
             echo "===== backend.log (tail 250) ====="
             tail -n 250 "$GITHUB_WORKSPACE/backend.log" || true
