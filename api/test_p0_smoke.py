@@ -99,7 +99,7 @@ def _pick_order_item(my_orders: Any) -> Any:
 
 
 @pytest.mark.labels("smoke", "order")
-def test_api_order_list(api_client, case_context, db_client, db_tx):
+def test_api_order_list(api_client, auth_token, case_context, db_client, db_tx):
     case = get_case("P0-ORDER-001")
     path, params, data, json_body = build_request(case, case_context)
     resp_all = api_client.get(path, params=params, data=data, json=json_body)
@@ -111,7 +111,7 @@ def test_api_order_list(api_client, case_context, db_client, db_tx):
 
 
 @pytest.mark.labels("smoke", "order")
-def test_api_order_my(api_client, case_context, db_client, db_tx):
+def test_api_order_my(api_client, auth_token, case_context, db_client, db_tx):
     case = get_case("P0-ORDER-002")
     path, params, data, json_body = build_request(case, case_context)
     resp_my = api_client.get(path, params=params, data=data, json=json_body)
@@ -124,9 +124,32 @@ def test_api_order_my(api_client, case_context, db_client, db_tx):
 
 
 @pytest.mark.labels("smoke", "order", "payment")
-def test_api_order_paid(api_client, env_config, case_context, db_client, db_tx):
+def test_api_order_paid(api_client, auth_token, env_config, case_context, db_client, db_tx):
+    """
+    测试订单支付接口（P0-ORDER-003）
+    
+    该测试用例验证用户能够成功支付订单。测试流程包括：
+    1. 从 /api/order/my 接口获取当前用户的订单列表
+    2. 提取可用的订单号（优先使用配置，其次从订单数据中提取）
+    3. 调用 /api/order/paid 接口完成订单支付
+    4. 验证支付结果并执行数据库校验
+    
+    Args:
+        api_client: API客户端实例，用于发送HTTP请求
+        env_config: 环境配置字典，包含测试所需的配置项（如orderNoPaid）
+        case_context: 测试用例上下文字典，存储测试过程中的共享数据
+        db_client: 数据库客户端实例，用于执行SQL查询
+        db_tx: 数据库事务对象，用于事务管理
+    
+    Returns:
+        None: 该测试函数无返回值，通过断言验证测试结果
+    
+    Raises:
+        pytest.skip: 当无法获取订单号时跳过测试
+        AssertionError: 当接口响应不符合预期时抛出断言异常
+    """
+    # 获取我的订单列表以提取订单号
     case_my = get_case("P0-ORDER-002")
-    # 先从 /my 获取订单号
     path_my, params_my, data_my, json_my = build_request(case_my, case_context)
     resp_my = api_client.get(path_my, params=params_my, data=data_my, json=json_my)
     assert_by_case_rule(resp_my, case_my)
@@ -137,7 +160,7 @@ def test_api_order_paid(api_client, env_config, case_context, db_client, db_tx):
 
     order_item = _pick_order_item(my_orders)
 
-    # 允许通过配置指定一个“可用于 paid 的订单号”，提高稳定性
+    # 确定订单号：优先级为配置文件 > 环境变量 > 上下文 > 从订单数据提取
     order_no = (
         env_config.get("orderNoPaid")
         or os.getenv("ORDER_NO_PAID")
@@ -149,13 +172,12 @@ def test_api_order_paid(api_client, env_config, case_context, db_client, db_tx):
     if not order_no:
         pytest.skip("Cannot determine orderNo for /api/order/paid; set config.orderNoPaid to proceed.")
 
-    # 支付订单（paid）
+    # 执行订单支付并验证结果
     case_paid = get_case("P0-ORDER-003")
     context = {"orderNo": order_no, **case_context}
     path_paid, params_paid, data_paid, json_paid = build_request(case_paid, context)
     resp_paid = api_client.get(path_paid, params=params_paid, data=data_paid, json=json_paid)
     assert_by_case_rule(resp_paid, case_paid)
     run_sql_check(case_paid, context, db_client=db_client, db_tx=db_tx)
-    # 接口可能返回 Result 错误码但 HTTP 仍是 200；因此优先走 body 断言
     assert_status_code(resp_paid, 200)
 

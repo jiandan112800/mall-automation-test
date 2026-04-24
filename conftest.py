@@ -321,23 +321,35 @@ def api_paths(api_client: HttpClient, env_config: dict) -> dict:
 @pytest.fixture(scope="session")
 def auth_token(api_client: HttpClient, env_config: dict, api_paths: dict) -> str:
     payload = build_login_payload(env_config)
+    payload_preview = {**payload, "password": "***"}
+    login_path = api_paths["login_path"]
+    encoding = env_config.get("login_password_encoding", "plain")
+    user = env_config.get("username", "")
     logger.info(
         "auth_token login start: path=%s user=%s encoding=%s",
-        api_paths["login_path"],
-        env_config.get("username", ""),
-        env_config.get("login_password_encoding", "plain"),
+        login_path,
+        user,
+        encoding,
     )
-    resp = api_client.post(api_paths["login_path"], json=payload)
+    resp = api_client.post(login_path, json=payload)
     logger.info(
         "auth_token login response: status=%s body_preview=%s",
         resp.status_code,
         (resp.text or "")[:400],
     )
-    assert_status_code(resp, 200)
-    body = resp.json()
-    assert_result_success(body)
-    token = body.get("data", {}).get("token")
-    assert token, "Missing token in login response"
+    try:
+        assert_status_code(resp, 200)
+        body = resp.json()
+        assert_result_success(body)
+        token = body.get("data", {}).get("token")
+        assert token, "Missing token in login response"
+    except Exception as exc:
+        body_preview = (resp.text or "")[:400]
+        raise AssertionError(
+            "auth_token login failed. "
+            f"path={login_path}, user={user}, encoding={encoding}, "
+            f"payload={payload_preview}, status={resp.status_code}, body_preview={body_preview}"
+        ) from exc
     api_client.set_token(token)
     return token
 
