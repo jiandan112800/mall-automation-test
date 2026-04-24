@@ -142,19 +142,17 @@ jobs:
               sed -n '1,400p' "$GITHUB_WORKSPACE/backend.log" || true
               exit 1
             fi
-            root_code=$(curl -sS --connect-timeout 2 --max-time 5 -o /dev/null -w "%{http_code}" "http://127.0.0.1:${PORT}/" 2>/dev/null || echo 000)
-            if [ "$root_code" != "000" ]; then
-              echo "Backend is up (HTTP $root_code on /)."
-              exit 0
-            fi
-            code=$(curl -sS --connect-timeout 2 --max-time 5 -o /dev/null -w "%{http_code}" "http://127.0.0.1:${PORT}/api/good" 2>/dev/null || echo 000)
-            if [ "$code" != "000" ]; then
-              echo "Backend is up (HTTP $code on /api/good)."
-              exit 0
+            if ss -lnt | rg -q ":${PORT} "; then
+              root_code=$(curl --noproxy '*' -sS --connect-timeout 2 --max-time 5 -o /dev/null -w "%{http_code}" "http://127.0.0.1:${PORT}/" 2>/dev/null || echo 000)
+              code=$(curl --noproxy '*' -sS --connect-timeout 2 --max-time 5 -o /dev/null -w "%{http_code}" "http://127.0.0.1:${PORT}/api/good" 2>/dev/null || echo 000)
+              if [ "$root_code" != "000" ] || [ "$code" != "000" ]; then
+                echo "Backend is up (port ${PORT} listening, /=$root_code, /api/good=$code)."
+                exit 0
+              fi
             fi
             if [ $((i % 15)) -eq 0 ]; then
               echo "still waiting... attempt=$i"
-              ss -lnt | grep ":${PORT} " || true
+              ss -lnt | rg ":${PORT} " || true
               tail -n 30 "$GITHUB_WORKSPACE/backend.log" || true
             fi
             sleep 2
@@ -168,6 +166,12 @@ jobs:
         env:
           RUN_UI: ${{ github.event.inputs.run_ui || 'false' }}
         run: |
+          if ! ss -lnt | rg -q ":8080 "; then
+            echo "Backend port 8080 is not listening before pytest."
+            echo "===== backend.log (tail 250) ====="
+            tail -n 250 "$GITHUB_WORKSPACE/backend.log" || true
+            exit 1
+          fi
           set +e
           if [ "$RUN_UI" = "true" ]; then
             pytest --alluredir=allure-results 2>&1 | tee pytest.log
