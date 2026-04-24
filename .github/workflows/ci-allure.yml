@@ -71,6 +71,11 @@ jobs:
           cache: maven
           cache-dependency-path: OnlineMall-backend/pom.xml
 
+      - name: Preload backend maven dependencies
+        run: |
+          cd OnlineMall-backend
+          mvn -B -DskipTests dependency:go-offline
+
       - name: Init backend database
         run: |
           for i in $(seq 1 30); do
@@ -112,12 +117,13 @@ jobs:
           cd OnlineMall-backend
           mkdir -p avatar file
           export SPRING_PROFILES_ACTIVE=dev
+          export SERVER_PORT=8080
           export SPRING_DATASOURCE_URL="jdbc:mysql://127.0.0.1:3306/db_electronic_mall?useUnicode=true&characterEncoding=utf8&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai"
           export SPRING_DATASOURCE_USERNAME="root"
           export SPRING_DATASOURCE_PASSWORD="123456"
           export SPRING_REDIS_HOST="127.0.0.1"
           export SPRING_REDIS_PORT="6379"
-          nohup mvn -B -DskipTests spring-boot:run > "$GITHUB_WORKSPACE/backend.log" 2>&1 &
+          nohup mvn -B -DskipTests spring-boot:run -Dspring-boot.run.arguments="--server.port=${SERVER_PORT}" > "$GITHUB_WORKSPACE/backend.log" 2>&1 &
           echo $! > "$GITHUB_WORKSPACE/backend.pid"
           sleep 12
           echo "===== backend process check ====="
@@ -127,26 +133,28 @@ jobs:
 
       - name: Wait for backend ready
         run: |
+          PORT=8080
           # 不用 curl -f：接口可能 401/403 仍表示服务已起来
-          for i in $(seq 1 180); do
+          for i in $(seq 1 360); do
             if ! ps -p "$(cat "$GITHUB_WORKSPACE/backend.pid")" > /dev/null 2>&1; then
               echo "Backend process exited before becoming ready."
               echo "===== backend.log (full, up to 400 lines) ====="
               sed -n '1,400p' "$GITHUB_WORKSPACE/backend.log" || true
               exit 1
             fi
-            code=$(curl -sS --connect-timeout 3 --max-time 8 -o /dev/null -w "%{http_code}" http://127.0.0.1:8080/api/good 2>/dev/null || echo 000)
-            if echo "$code" | grep -qE '^(200|301|302|401|403|404)$'; then
-              echo "Backend is up (HTTP $code on /api/good)."
+            root_code=$(curl -sS --connect-timeout 2 --max-time 5 -o /dev/null -w "%{http_code}" "http://127.0.0.1:${PORT}/" 2>/dev/null || echo 000)
+            if [ "$root_code" != "000" ]; then
+              echo "Backend is up (HTTP $root_code on /)."
               exit 0
             fi
-            scode=$(curl -sS --connect-timeout 1 --max-time 2 -o /dev/null -w "%{http_code}" http://127.0.0.1:8080/swagger-ui.html 2>/dev/null || echo 000)
-            if echo "$scode" | grep -qE '^(200|301|302)$'; then
-              echo "Backend is up (swagger-ui HTTP $scode)."
+            code=$(curl -sS --connect-timeout 2 --max-time 5 -o /dev/null -w "%{http_code}" "http://127.0.0.1:${PORT}/api/good" 2>/dev/null || echo 000)
+            if [ "$code" != "000" ]; then
+              echo "Backend is up (HTTP $code on /api/good)."
               exit 0
             fi
             if [ $((i % 15)) -eq 0 ]; then
               echo "still waiting... attempt=$i"
+              ss -lnt | grep ":${PORT} " || true
               tail -n 30 "$GITHUB_WORKSPACE/backend.log" || true
             fi
             sleep 2
