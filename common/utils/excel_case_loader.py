@@ -8,6 +8,7 @@ from typing import Any
 
 import pytest
 from openpyxl import load_workbook
+from common.assertions.case_assertions import assert_by_case_rule
 from common.assertions.sql_assertions import assert_sql_result
 
 
@@ -143,43 +144,6 @@ def build_request(case: dict, context: dict[str, Any]) -> tuple[str, dict, dict,
         elif key == "userId" and "current_user_id" in context:
             path = path.replace("{userId}", str(context["current_user_id"]))
     return path, params, data, json_body
-
-
-def assert_by_case_rule(response, case: dict) -> None:
-    check = _norm_text(case.get("check"))
-    expected = _norm_text(case.get("expected"))
-
-    if not check:
-        return
-
-    if check == "res.json.code":
-        options = [x.strip() for x in expected.split("|") if x.strip()]
-        if not options:
-            raise AssertionError(f"Invalid expected for {check}: {expected!r}")
-        actual = None
-        try:
-            body = response.json()
-            if isinstance(body, dict) and "code" in body:
-                actual = str(body.get("code"))
-        except Exception:
-            actual = None
-        # fallback: 非 JSON 响应时用 HTTP 状态码兜底
-        if actual is None:
-            actual = str(response.status_code)
-        assert actual in options, f"Expected one of {options}, got {actual}, body={response.text}"
-        return
-
-    if check == "res.status_code":
-        assert str(response.status_code) == expected, (
-            f"Unexpected status code: {response.status_code}, expected={expected}, body={response.text}"
-        )
-        return
-
-    if check == "res.text":
-        assert expected in response.text, f"Expected {expected!r} in response text: {response.text}"
-        return
-
-    pytest.fail(f"Unsupported check rule in Excel: {check}")
 
 
 def _pick_by_json_path(data: Any, path: str) -> Any:

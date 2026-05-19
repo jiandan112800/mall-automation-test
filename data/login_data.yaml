@@ -1,0 +1,7 @@
+valid_login:
+  username: "user1"
+  password: "123456"
+
+invalid_login:
+  username: "user1"
+  password: "wrong_password"

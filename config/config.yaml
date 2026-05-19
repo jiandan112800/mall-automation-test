@@ -1,0 +1,36 @@
+common:
+  timeout: 15
+  verify_ssl: false
+  login_password_encoding: md5
+  headless: false
+  ui_page_load_timeout: 45
+  ui_script_timeout: 45
+  ui_implicit_wait: 5
+  ui_home_path: "/topview"
+  ui_cart_path: "/cart"
+  orderNoPaid: ""
+  db:
+    host: ""
+    port: 3306
+    user: ""
+    password: ""
+    database: ""
+    charset: "utf8mb4"
+
+environments:
+  dev:
+    base_url: "http://localhost:8080"
+    ui_base_url: "http://localhost:3000"
+    admin_ui_base_url: "http://localhost:8080/manage/home"
+    username: "user1"
+    password: "123456"
+    login_path: "/login"
+    userid_path: "/userid"
+    admin_username: "admin"
+    admin_password: "123456"
+    ui_use_api_token: true
+    ui_token_storage_key: "token"
+    # 自动下载与已安装 Chrome 同主版本的 ChromeDriver（推荐）
+    chrome_use_webdriver_manager: true
+    # 固定路径时填写；版本须与 Chrome 一致（当前 Chrome 148 时勿用 146 的驱动）
+    # chrome_driver_path: "D:/Python/Lib/site-packages/chromedriver_binary/chromedriver.exe"

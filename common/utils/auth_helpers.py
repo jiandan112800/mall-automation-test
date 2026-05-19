@@ -38,7 +38,7 @@ def normalize_api_path(p: str) -> str:
 def post_role_after_login(api_client: HttpClient, env_config: dict) -> None:
     """
     与浏览器一致：登录成功并带上 token 后，部分后端会再请求 POST /role。
-    在 dev.yaml 中配置 role_path；留空则跳过。
+    在 config/config.yaml 中配置 role_path；留空则跳过。
     """
     role_path = normalize_api_path(str(env_config.get("role_path", "") or ""))
     if not role_path:
