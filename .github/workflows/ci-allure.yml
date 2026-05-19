@@ -166,7 +166,7 @@ jobs:
         env:
           RUN_UI: ${{ github.event.inputs.run_ui || 'false' }}
         run: |
-          if ! ss -lnt | grep -E ":8080\\b" >/dev/null 2>&1; then
+          if ! ss -lnt | grep -E ":8080\b" >/dev/null 2>&1; then
             echo "Backend port 8080 is not listening before pytest."
             echo "===== backend.log (tail 250) ====="
             tail -n 250 "$GITHUB_WORKSPACE/backend.log" || true
@@ -174,9 +174,9 @@ jobs:
           fi
           set +e
           if [ "$RUN_UI" = "true" ]; then
-            pytest --alluredir=allure-results 2>&1 | tee pytest.log
+            pytest testcases/ui --alluredir=allure-results 2>&1 | tee pytest.log
           else
-            pytest api --alluredir=allure-results 2>&1 | tee pytest.log
+            pytest testcases/api --alluredir=allure-results 2>&1 | tee pytest.log
           fi
           echo "${PIPESTATUS[0]}" > .pytest_exit_code
 
