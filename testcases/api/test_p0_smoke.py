@@ -44,6 +44,8 @@ def _get_result_data(resp) -> Any:
 @allure.story("Userid auth guard")
 @allure.title("API: userid endpoint requires login")
 def test_userid_requires_login(api_client, api_paths):
+    # api_client 为 session 级共享，测完必须恢复 token，避免污染后续用例
+    prev = api_client.session.headers.get("token")
     with allure.step("Call userid without token"):
         case = get_case("P0-AUTH-002")
         api_client.clear_token()
@@ -53,6 +55,8 @@ def test_userid_requires_login(api_client, api_paths):
     with allure.step("Assert auth failed as expected"):
         assert_by_case_rule(resp, case)
         assert_auth_failure(resp)
+    if prev:
+        api_client.set_token(str(prev))
 
 
 @pytest.mark.labels("smoke", "user")
@@ -319,7 +323,12 @@ class TestPaymentP0:
         """
         8) 未授权访问
         """
-        api_client.clear_token()
-        resp = _call_pay(api_client, "20260424113602748407")
-        # 与你要求一致：按 code401 校验（兼容 HTTP 401/403）
-        assert_auth_failure(resp)
+        prev = api_client.session.headers.get("token")
+        try:
+            api_client.clear_token()
+            resp = _call_pay(api_client, "20260424113602748407")
+            # 与你要求一致：按 code401 校验（兼容 HTTP 401/403）
+            assert_auth_failure(resp)
+        finally:
+            if prev:
+                api_client.set_token(str(prev))
