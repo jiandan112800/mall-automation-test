@@ -214,31 +214,41 @@ class TestPaymentP0:
     @pytest.mark.labels("smoke", "order", "payment", "negative")
     def test_payment_missing_required_param(self, api_client, auth_token):
         """
-        2) 路径中缺少 {orderNo}（本次请求未指明要支付哪一笔订单）：
-        预期为客户端/路由可见的错误（常见 404、405，或进入业务后的 4xx），不应作为未捕获异常返回 500。
+        2) 路径中缺少 {orderNo}：
+           预期返回客户端错误(4xx)，而不是 500 或成功响应(2xx)。
+           后端目前已知缺陷：返回 500（应返回 405 Method Not Allowed 或 404）。
         """
         candidates = ["/api/order/paid", "/api/order/paid/"]
-        matched = False
+
         for path in candidates:
+            # 根据接口真实语义，若支付应为 POST，可改为 api_client.post(path, json={})
             resp = api_client.get(path)
+
+            # 脱敏记录请求头，避免在日志中泄露 token
+            safe_headers = {
+                k: ("***" if k.lower() in ("token", "authorization") else v)
+                for k, v in resp.request.headers.items()
+            }
             logger.info(
-                "payment missing param probe: path=%s status=%s request_headers=%s response_body=%s",
-                path,
-                resp.status_code,
-                dict(resp.request.headers),
-                resp.text,
+                "payment missing param probe: path=%s status=%s headers=%s body=%s",
+                path, resp.status_code, safe_headers, resp.text
             )
+
+            # 如果路由层直接拒绝（404 或 405），视为最理想情况，继续测试下一个路径
             if resp.status_code in (404, 405):
-                # 路由层拒绝，继续探测另一路径
                 continue
-            matched = True
-            assert resp.status_code < 500, (
-                "missing path orderNo should not yield 5xx; "
-                f"got status={resp.status_code}, body={resp.text}"
-            )
-            break
-        if not matched:
-            pytest.skip("Router rejects missing path-param directly (404/405), business-layer assertion skipped.")
+
+            # 进入业务层（或未正确拒绝），此时必须返回 4xx 客户端错误，绝不能是 5xx 或 2xx
+            if resp.status_code < 400 or resp.status_code >= 500:
+                pytest.fail(
+                    f"Expected a 4xx client error for missing orderNo on {path}, "
+                    f"but got {resp.status_code}: {resp.text}"
+                )
+            # 如果状态码落在 400~499 之间，则测试通过（符合预期）
+            return
+
+        # 所有候选路径都被路由层直接拒绝（404/405），跳过后续断言
+        pytest.skip("Router rejects missing path-param directly (404/405)")
 
     @pytest.mark.labels("smoke", "order", "payment", "negative")
     @pytest.mark.parametrize("bad_amount", [0, -0.01, -100])
