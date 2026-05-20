@@ -76,8 +76,10 @@ jobs:
           cd OnlineMall-backend
           mvn -B -DskipTests dependency:go-offline
 
+      # ────────────── 修复后的数据库初始化步骤 ──────────────
       - name: Init backend database
         run: |
+          # 等待 MySQL 就绪
           for i in $(seq 1 30); do
             if mysql -h127.0.0.1 -uroot -p123456 -e "SELECT 1" >/dev/null 2>&1; then
               echo "MySQL is ready."
@@ -86,31 +88,12 @@ jobs:
             sleep 2
           done
 
-          SQL_FILES=()
-          for f in \
-            "OnlineMall-backend/database/electronic_mall.sql" \
-            "OnlineMall-backend/sql/electronic_mall.sql" \
-            "OnlineMall-backend/electronic_mall.sql" \
-            "OnlineMall-backend/src/main/resources/electronic_mall.sql" \
-            "OnlineMall-backend/src/main/resources/schema.sql" \
-            "OnlineMall-backend/src/main/resources/data.sql"
-          do
-            if [ -f "$f" ]; then
-              SQL_FILES+=("$f")
-            fi
-          done
+          # 确保数据库存在（双保险）
+          mysql -h127.0.0.1 -uroot -p123456 -e "CREATE DATABASE IF NOT EXISTS db_electronic_mall DEFAULT CHARACTER SET utf8mb4;"
 
-          if [ "${#SQL_FILES[@]}" -eq 0 ]; then
-            echo "No SQL bootstrap file found; continue and rely on backend auto-init."
-            ls -la OnlineMall-backend || true
-            ls -la OnlineMall-backend/src/main/resources || true
-          else
-            echo "Importing SQL files:"
-            printf ' - %s\n' "${SQL_FILES[@]}"
-            for sql in "${SQL_FILES[@]}"; do
-              mysql -h127.0.0.1 -uroot -p123456 db_electronic_mall < "$sql"
-            done
-          fi
+          # 导入你刚生成的 init.sql 建表脚本
+          mysql -h127.0.0.1 -uroot -p123456 db_electronic_mall < OnlineMall-backend/sql/init.sql
+      # ─────────────────────────────────────────────────────
 
       - name: Start backend service
         run: |
@@ -134,7 +117,6 @@ jobs:
       - name: Wait for backend ready
         run: |
           PORT=8080
-          # 不用 curl -f：接口可能 401/403 仍表示服务已起来
           for i in $(seq 1 360); do
             if ! ps -p "$(cat "$GITHUB_WORKSPACE/backend.pid")" > /dev/null 2>&1; then
               echo "Backend process exited before becoming ready."
@@ -248,3 +230,4 @@ jobs:
             echo "pytest failed with exit code: $code"
             exit "$code"
           fi
+          
