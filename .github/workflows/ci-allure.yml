@@ -88,11 +88,13 @@ jobs:
             sleep 2
           done
 
-          # 确保数据库存在（双保险）
+          # 确保数据库存在
           mysql -h127.0.0.1 -uroot -p123456 -e "CREATE DATABASE IF NOT EXISTS db_electronic_mall DEFAULT CHARACTER SET utf8mb4;"
 
-          # 导入你刚生成的 init.sql 建表脚本
+          # 先建表
           mysql -h127.0.0.1 -uroot -p123456 db_electronic_mall < OnlineMall-backend/sql/init.sql
+          # 再导入数据
+          mysql -h127.0.0.1 -uroot -p123456 db_electronic_mall < OnlineMall-backend/sql/data.sql
       # ─────────────────────────────────────────────────────
 
       - name: Start backend service
@@ -230,4 +232,3 @@ jobs:
             echo "pytest failed with exit code: $code"
             exit "$code"
           fi
-          
